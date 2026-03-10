@@ -1,0 +1,45 @@
+version: '3.8' # Версия синтаксиса Compose (стандарт де-факто)
+
+services:
+  # --- НАША ПЕРВАЯ БАЗА ДАННЫХ ---
+  users-db:
+    image: postgres:15-alpine # Берем готовую легкую БД от разработчиков PostgreSQL
+    environment:
+      POSTGRES_USER: postgres # Логин
+      POSTGRES_PASSWORD: admin # Твой пароль (можешь поменять)
+      POSTGRES_DB: micro_users # Имя базы, которое создастся автоматически!
+    ports:
+      - "5432:5432" # Прокидываем порт наружу (чтобы ты мог зайти через PgAdmin)
+
+  # --- НАШ ПЕРВЫЙ СЕРВИС ---
+  users-api:
+    build: ./users-service # Говорим Докеру: "Иди в эту папку и читай там Dockerfile"
+    ports:
+      - "3001:3001" # Прокидываем порт твоего API наружу
+    environment:
+      # ВНИМАНИЕ: Смотри, как поменялся URL! Вместо localhost мы пишем имя сервиса БД (users-db)
+      DATABASE_URL: "postgresql://postgres:admin@users-db:5432/micro_users?schema=public"
+    depends_on:
+      - users-db # Говорим: "Не запускай API, пока база данных не поднимется"
+
+      # --- НАША ВТОРАЯ БАЗА ДАННЫХ ---
+  orders-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: micro_orders
+    ports:
+      - "5433:5432" # Снаружи твоего ПК это будет 5433 порт, чтобы не конфликтовать с users-db
+
+  # --- НАШ ВТОРОЙ СЕРВИС ---
+  orders-api:
+    build: ./orders-service
+    ports:
+      - "3002:3002"
+    environment:
+      # Подключаемся к базе заказов (имя сервиса - orders-db)
+      DATABASE_URL: "postgresql://postgres:mysecretpassword@orders-db:5432/micro_orders?schema=public"
+    depends_on:
+      - orders-db
+      - users-api # Желательно запускаться после сервиса юзеров
