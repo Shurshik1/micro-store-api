@@ -43,3 +43,12 @@ services:
     depends_on:
       - orders-db
       - users-api # Желательно запускаться после сервиса юзеров
+
+  # --- НАШ ЕДИНЫЙ ШЛЮЗ ---
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - users-api
+      - orders-api
