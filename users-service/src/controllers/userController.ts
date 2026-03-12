@@ -1,47 +1,98 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
 import { AppError } from '../utils/AppError';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken'; // Импорт JWT теперь один и в самом верху
 
+// 1. Получение всех пользователей
 export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      select: { id: true, name: true, email: true }
+    });
     res.json(users);
   } catch (error) {
     next(error);
   }
 };
 
+// 2. Регистрация (Создание пользователя)
 export const postUser = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { name, email } = req.body;
-        if (!name || !email) {
-            throw new AppError('Имя и email обязательны!', 400);
-        }
+  try {
+    const { name, email, password } = req.body;
 
-        const newUser = await prisma.user.create({
-            data: { name, email }
-        });
-        res.status(201).json(newUser);
-    } catch (error: any) {
-        if (error.code === 'P2002') {
-          return next(new AppError('Пользователь с таким email уже существует', 409));
-        } 
-      next(error);
-    }};
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-export const getUserId = async (req: Request, res: Response, next: NextFunction) => {
-    try{
-        const userId = parseInt(req.params.id as string, 10);
-        if (isNaN(userId)) {
-          throw new AppError('ID пользователя должен быть числом!', 400);
-        }
-        const user = await prisma.user.findUnique({
-      where: { id: userId }
+    const newUser = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+      },
     });
-    if(!user){
+
+    const { password: _, ...userWithoutPassword } = newUser;
+    res.status(201).json(userWithoutPassword);
+  } catch (error: any) {
+    if (error.code === 'P2002') {
+      return next(new AppError('Пользователь с таким email уже существует', 409));
+    }
+    next(error);
+  }
+};
+
+// 3. Логин (Вход)
+export const loginUser = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password } = req.body;
+
+    // Ищем юзера
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new AppError('Неверный email или пароль', 401);
+    }
+
+    // Проверяем пароль
+    const isPasswordCorrect = await bcrypt.compare(password, user.password);
+    if (!isPasswordCorrect) {
+      throw new AppError('Неверный email или пароль', 401);
+    }
+
+    // Генерируем токен
+    const token = jwt.sign(
+      { userId: user.id }, 
+      process.env.JWT_SECRET || 'super-secret-key', 
+      { expiresIn: '1d' }
+    );
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({
+      status: 'success',
+      token,
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 4. Получение по ID
+export const getUserId = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = parseInt(req.params.id as string, 10);
+    if (isNaN(userId)) {
+      throw new AppError('ID пользователя должен быть числом!', 400);
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true }
+    });
+    if (!user) {
       throw new AppError('Пользователь не найден', 404);
     }
     res.json(user);
-      } catch (error){
-        next(error);
-      }};
+  } catch (error) {
+    next(error);
+  }
+};
