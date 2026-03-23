@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
 import { AppError } from '../utils/AppError';
+import jwt from 'jsonwebtoken';
 
 export const createOrder = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -35,37 +36,78 @@ try {
       throw new AppError('ID заказа должен быть числом!', 400);
     }
 
-    // 1. ДОСТАЕМ ЗАКАЗ ИЗ БАЗЫ
+
     const order = await prisma.order.findUnique({
       where: { id: orderId }
     });
 
-    // Если Prisma вернула null (заказа нет)
+
     if (!order) {
       throw new AppError(`Заказ с ID ${orderId} не найден`, 404);
     }
 
-    // 2. ИДЕМ К СОСЕДНЕМУ СЕРВИСУ ЗА ЮЗЕРОМ
-    // Обязательно используем обратные кавычки (backticks), чтобы вставить ID покупателя!
+
     const userResponse = await fetch(`http://users-api:3001/api/users/${order.buyerId}`);
     
-    // Если Users API ответил ошибкой (например, такого юзера нет)
+
     if (!userResponse.ok) {
       throw new AppError(`Покупатель с ID ${order.buyerId} не найден в базе пользователей`, 404);
     }
 
-    // Распаковываем ответ от сервиса юзеров
+
     const userData = await userResponse.json();
 
-    // 3. СКЛЕИВАЕМ ДАННЫЕ ВМЕСТЕ
+
     const fullOrder = {
-      ...order,      // Берем все поля из заказа (id, productName, price и т.д.)
-      buyer: userData // И добавляем сверху объект с данными юзера
+      ...order,      
+      buyer: userData 
     };
 
-    // Отдаем клиенту красивый склеенный результат
+
     res.json(fullOrder);
     
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getUserOrders = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new AppError('Нет доступа. Токен не предоставлен', 401);
+    }
+
+    const token = authHeader.split(' ')[1];
+
+
+    const secret = process.env.JWT_SECRET || 'super-secret-key'; 
+    
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch (e) {
+      throw new AppError('Неверный или просроченный токен', 401);
+    }
+
+ 
+    const currentBuyerId = decoded.userId; 
+
+
+    if (!currentBuyerId) {
+      throw new AppError('Ошибка структуры токена: нет ID пользователя', 401);
+    }
+
+    const orders = await prisma.order.findMany({
+      where: { 
+        buyerId: Number(currentBuyerId) 
+      }
+    });
+
+    res.status(200).json(orders);
+
   } catch (error) {
     next(error);
   }

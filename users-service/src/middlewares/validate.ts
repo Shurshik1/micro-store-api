@@ -8,7 +8,6 @@ export const validate = (schema: any) => {
       next(); 
     } catch (error: any) {
       if (error instanceof ZodError) {
-        // Достаем ошибки безопасно: либо из issues, либо из errors, либо пустой массив
         const issues = error.issues || (error as any).errors || [];
         
         const errorMessages = issues.map((err: any) => {

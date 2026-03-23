@@ -2,9 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
 import { AppError } from '../utils/AppError';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken'; // Импорт JWT теперь один и в самом верху
+import jwt from 'jsonwebtoken';
 
-// 1. Получение всех пользователей
 export const getAllUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const users = await prisma.user.findMany({
@@ -16,7 +15,6 @@ export const getAllUsers = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
-// 2. Регистрация (Создание пользователя)
 export const postUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name, email, password } = req.body;
@@ -42,24 +40,20 @@ export const postUser = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
-// 3. Логин (Вход)
 export const loginUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, password } = req.body;
 
-    // Ищем юзера
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
       throw new AppError('Неверный email или пароль', 401);
     }
 
-    // Проверяем пароль
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect) {
       throw new AppError('Неверный email или пароль', 401);
     }
 
-    // Генерируем токен
     const token = jwt.sign(
       { userId: user.id }, 
       process.env.JWT_SECRET || 'super-secret-key', 
@@ -77,7 +71,6 @@ export const loginUser = async (req: Request, res: Response, next: NextFunction)
   }
 };
 
-// 4. Получение по ID
 export const getUserId = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = parseInt(req.params.id as string, 10);
